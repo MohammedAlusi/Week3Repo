@@ -23,21 +23,26 @@ def add_todo():
     if not task:
         return jsonify({"error": "Task cannot be empty"}), 400
 
+    # Assign a unique ID
+    next_id = max([todo["id"] for todo in todos], default=0) + 1
     todo = {
-        "id": len(todos) + 1,
+        "id": next_id,
         "task": task,
         "done": False
     }
     todos.append(todo)
     return jsonify(todo), 201
 
-# PUT – mark todo as done
+# PUT – edit todo text or mark done
 @app.route("/todos/<int:id>", methods=["PUT"])
 def update_todo(id):
     data = request.get_json()
     for todo in todos:
         if todo["id"] == id:
-            todo["done"] = data.get("done", todo["done"])
+            if "task" in data:
+                todo["task"] = data["task"]
+            if "done" in data:
+                todo["done"] = data["done"]
             return jsonify(todo)
     return jsonify({"error": "Not found"}), 404
 
