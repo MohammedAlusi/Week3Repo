@@ -1,18 +1,34 @@
 from flask import Flask, request, jsonify, render_template
 
 app = Flask(__name__)
+import psycopg2
 
-# In-memory "database"
-todos = []
+# Database configuration
+DB_CONFIG = {
+    "dbname": "todo_db",
+    "user": "postgres",
+    "password": "123456",  
+    "host": "localhost",
+    "port": 5432        
+}
+
+def get_db_connection():
+    return psycopg2.connect(**DB_CONFIG)
 
 # Serve HTML page
 @app.route("/")
 def home():
     return render_template("week3.html")
 
-# GET all todos
 @app.route("/todos", methods=["GET"])
 def get_todos():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, task, done FROM todos ORDER BY id;")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    todos = [{"id": r[0], "task": r[1], "done": r[2]} for r in rows]
     return jsonify(todos)
 
 # POST a new todo
@@ -23,37 +39,53 @@ def add_todo():
     if not task:
         return jsonify({"error": "Task cannot be empty"}), 400
 
-    # Assign a unique ID
-    next_id = max([todo["id"] for todo in todos], default=0) + 1
-    todo = {
-        "id": next_id,
-        "task": task,
-        "done": False
-    }
-    todos.append(todo)
-    return jsonify(todo), 201
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO todos (task) VALUES (%s) RETURNING id, task, done;",
+        (task,)
+    )
+    new_todo = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
 
-# PUT – edit todo text or mark done
+    return jsonify({"id": new_todo[0], "task": new_todo[1], "done": new_todo[2]}), 201
+
 @app.route("/todos/<int:id>", methods=["PUT"])
 def update_todo(id):
     data = request.get_json()
-    for todo in todos:
-        if todo["id"] == id:
-            if "task" in data:
-                todo["task"] = data["task"]
-            if "done" in data:
-                todo["done"] = data["done"]
-            return jsonify(todo)
-    return jsonify({"error": "Not found"}), 404
+    conn = get_db_connection()
+    cur = conn.cursor()
 
-# DELETE a todo
+    if "task" in data:
+        cur.execute("UPDATE todos SET task=%s WHERE id=%s;", (data["task"], id))
+    if "done" in data:
+        cur.execute("UPDATE todos SET done=%s WHERE id=%s;", (data["done"], id))
+
+    conn.commit()
+    cur.execute("SELECT id, task, done FROM todos WHERE id=%s;", (id,))
+    updated = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not updated:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({"id": updated[0], "task": updated[1], "done": updated[2]})
+
 @app.route("/todos/<int:id>", methods=["DELETE"])
 def delete_todo(id):
-    for todo in todos:
-        if todo["id"] == id:
-            todos.remove(todo)
-            return jsonify({"message": "Deleted"})
-    return jsonify({"error": "Not found"}), 404
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM todos WHERE id=%s RETURNING id;", (id,))
+    deleted = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    if not deleted:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({"message": "Deleted"})
 
 if __name__ == "__main__":
     app.run(debug=True)
