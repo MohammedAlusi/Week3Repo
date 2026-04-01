@@ -15,12 +15,13 @@
     <h1>Todo List</h1>
     
     <input type="text" id="newTask" placeholder="Add a new todo">
+    <input type="text" id="newDescription" placeholder="Add a description">
     <button onclick="addTodo()">Add</button>
     
     <ul id="todoList"></ul>
 
     <script>
-        // Load todos on page load
+        // Load todos
         async function loadTodos() {
             const response = await fetch('/todos');
             const todos = await response.json();
@@ -31,6 +32,7 @@
                 li.id = `todo-${todo.id}`;
                 li.innerHTML = `
                     <span id="task-${todo.id}" class="${todo.done ? 'done' : ''}">${todo.task}</span>
+                    <button onclick="showDescription(${todo.id})">Description</button>
                     <button onclick="toggleDone(${todo.id})">${todo.done ? 'Undo' : 'Done'}</button>
                     <button onclick="editTodo(${todo.id})">Edit</button>
                     <button onclick="deleteTodo(${todo.id})">Delete</button>
@@ -39,46 +41,56 @@
             });
         }
 
-        // Add a new todo
+        // Show description
+        async function showDescription(id) {
+            const response = await fetch('/todos');
+            const todos = await response.json();
+            const todo = todos.find(t => t.id === id);
+            if (todo) {
+                alert(`Description: ${todo.description || "No description"}`);
+            }
+        }
+
+        // Add todo
         async function addTodo() {
-            const input = document.getElementById('newTask');
-            const task = input.value.trim();
+            const task = document.getElementById('newTask').value.trim();
+            const description = document.getElementById('newDescription').value.trim();
             if (!task) return alert('Task cannot be empty');
-            
+
             const response = await fetch('/todos', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ task })
+                body: JSON.stringify({ task, description })
             });
             if (response.ok) {
-                input.value = '';
+                document.getElementById('newTask').value = '';
+                document.getElementById('newDescription').value = '';
                 loadTodos();
             }
         }
 
-        // Edit a todo
+        // Edit todo
         async function editTodo(id) {
-            const currentText = document.getElementById(`task-${id}`).innerText;
-            const newTask = prompt("Edit your todo:", currentText);
+            const currentTask = document.getElementById(`task-${id}`).innerText;
+            const newTask = prompt("Edit your todo:", currentTask);
             if (!newTask || newTask.trim() === "") return;
+            const newDescription = prompt("Edit description:");
 
             const response = await fetch(`/todos/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ task: newTask.trim() })
+                body: JSON.stringify({ task: newTask.trim(), description: newDescription })
             });
-
             if (response.ok) loadTodos();
-            else alert("Failed to update todo");
         }
 
-        // Delete a todo
+        // Delete todo
         async function deleteTodo(id) {
             const response = await fetch(`/todos/${id}`, { method: 'DELETE' });
             if (response.ok) loadTodos();
         }
 
-        // Toggle done/undone
+        // Toggle done
         async function toggleDone(id) {
             const span = document.getElementById(`task-${id}`);
             const done = !span.classList.contains('done');
@@ -91,7 +103,6 @@
             if (response.ok) loadTodos();
         }
 
-        // Initial load
         loadTodos();
     </script>
 </body>
